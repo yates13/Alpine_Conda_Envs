@@ -188,3 +188,53 @@ channels, in which case fall back to the minimal `.yml`.
 | Env build killed or very slow | Don't build on the login node. Use `sinteractive` or `sbatch`. |
 | `hisat2 --version` prints `Compiler: ... error: ld returned 1` | Harmless. It's build-info text baked into the binary, not a runtime error. |
 | `No module named ...` in a job | Script didn't activate the env. Add the `source .../conda.sh` and `conda activate <full path>` lines. |
+
+---
+
+## Using this repo (current layout)
+
+The repo was reorganized after the notes above were written. Specs now live in
+`envs/` (exact-version snapshots in `envs/locked/`) and scripts in `scripts/`.
+Where the notes above refer to `CondaEnvs/<name>.yml` or `make_envs.sh`, use
+`envs/<name>.yml` and `scripts/make_envs.sh`.
+
+~~
+envs/             one spec per environment (edit these)
+  locked/         exact-version snapshots (*.full.yml)
+scripts/          setup_conda.sh, make_envs.sh, new_env.sh,
+                  export_env.sh, verify_envs.sh, build_envs.sbatch
+logs/             Slurm logs (not committed)
+~~
+
+### Quick start (for anyone cloning this)
+
+Prerequisite: conda or Miniforge installed at `/projects/$USER/miniforge3`.
+
+~~bash
+git clone https://github.com/yates13/alpine-conda-envs.git
+cd alpine-conda-envs
+
+bash scripts/setup_conda.sh            # one-time: envs + package cache go to /projects
+sbatch scripts/build_envs.sbatch       # build every spec in envs/ as a Slurm job
+bash scripts/verify_envs.sh            # when the job finishes
+~~
+
+Run `sbatch` from the repo root. Logs appear in `logs/`. The specs in `envs/`
+are examples from a CUT&RUN / RNA-seq pipeline; delete or replace them with your own.
+
+### Common tasks (run on a compute node, not the login node)
+
+~~bash
+bash scripts/make_envs.sh fastp_env                          # build one env
+bash scripts/make_envs.sh                                    # build all (existing are skipped)
+bash scripts/make_envs.sh --locked                           # build from exact-version snapshots
+bash scripts/new_env.sh align_env python=3.11 samtools bwa   # write a spec and build it
+bash scripts/export_env.sh myenv                             # snapshot to envs/locked/myenv.full.yml
+~~
+
+Paths default to `/projects/$USER/...`. Override with `ENV_DIR` and `CONDA_BASE`
+if yours differ:
+
+~~bash
+CONDA_BASE=/path/to/miniforge3 ENV_DIR=/path/to/conda_envs sbatch --export=ALL scripts/build_envs.sbatch
+~~
