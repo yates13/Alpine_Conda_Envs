@@ -107,6 +107,69 @@ dependencies:
   - samtools
 ~~
 
+## Writing an environment spec (.yml)
+
+Each environment is described by one YAML file in `envs/`. The simplest way to
+make one is `bash scripts/new_env.sh <name> <packages...>`, which writes the file
+for you. To write one by hand:
+
+~~yaml
+# envs/rnaseq_env.yml
+name: rnaseq_env
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - samtools=1.20
+  - hisat2
+  - pandas>=2.0
+  - pip
+  - pip:
+      - some-pypi-only-package
+~~
+
+What each part means:
+
+- **`name`**: a label for the env. Set it to match the file name, because the scripts
+  build into `<ENV_DIR>/<file name without .yml>`. So `envs/rnaseq_env.yml` becomes
+  `/projects/$USER/conda_envs/rnaseq_env`, whatever `name:` says.
+- **`channels`**: where conda looks for packages, in priority order. Use `conda-forge`
+  first, then `bioconda` for bioinformatics tools. Keep that order, since mixing it up
+  can cause conflicts.
+- **`dependencies`**: the packages to install.
+  - `samtools`: the latest compatible version.
+  - `samtools=1.20`: that version (any build).
+  - `pandas>=2.0`: a version range. Quote it in the file if you see parsing problems (`"pandas>=2.0"`).
+  - Pin `python=3.x` if a tool needs a specific Python.
+- **`pip:`**: only for packages that aren't on conda. List `pip` itself in
+  `dependencies` first, then put the PyPI packages under `- pip:`.
+
+**Finding package names:** search [anaconda.org](https://anaconda.org) or
+[bioconda.github.io/recipes.html](https://bioconda.github.io/recipes.html), or run
+`conda search -c conda-forge -c bioconda <name>` on the cluster.
+
+**Making a spec from an env you already built:**
+
+~~bash
+conda env export -p /projects/$USER/conda_envs/myenv --from-history \
+  | grep -v '^prefix:' > envs/myenv.yml
+~~
+
+`--from-history` lists only the packages you explicitly asked for, which gives a short,
+readable spec. For exact versions of everything, use `bash scripts/export_env.sh myenv`
+instead (it goes in `envs/locked/`).
+
+**Test a new spec** before committing it:
+
+~~bash
+bash scripts/make_envs.sh rnaseq_env     # on a compute node
+/projects/$USER/conda_envs/rnaseq_env/bin/samtools --version
+~~
+
+If the build fails with a conflict, remove the version pins one at a time to find the
+culprit.
+
 ## Using an environment
 
 Interactive:
