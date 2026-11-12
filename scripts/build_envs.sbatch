@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=build_envs
-#SBATCH --partition=amilan
-#SBATCH --qos=normal
+#SBATCH --partition=acpu
+#SBATCH --qos=cpu-normal
 #SBATCH --ntasks=4
 #SBATCH --time=04:00:00
 #SBATCH --output=logs/build_envs_%j.log

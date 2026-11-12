@@ -238,3 +238,12 @@ if yours differ:
 ~~bash
 CONDA_BASE=/path/to/miniforge3 ENV_DIR=/path/to/conda_envs sbatch --export=ALL scripts/build_envs.sbatch
 ~~
+
+### Partition and QOS
+
+`scripts/build_envs.sbatch` defaults to `--partition=acpu --qos=cpu-normal`.
+If your account uses different names, override them at submit time without editing the file:
+
+~~bash
+sbatch --partition=<your-partition> --qos=<your-qos> scripts/build_envs.sbatch
+~~
