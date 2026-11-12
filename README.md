@@ -1,202 +1,77 @@
-# Conda Environments on Alpine
+# Alpine_Conda_Envs
 
-Notes on where my conda environments live, why they were moved, and how to create new ones.
+Keep conda environments on **Alpine** (CU Research Computing) in `/projects`
+instead of `/scratch` or `$HOME`, so they survive the 90-day scratch purge.
+One YAML spec per environment, scripts to build, verify, and snapshot them,
+and a Slurm wrapper for building on a compute node.
 
-## Background: why this exists
+**Why:** files in `/scratch` are purged after 90 days. Conda envs created there
+(or in the default `~/.conda/envs`) silently disappear and break pipelines.
+`/projects` is not purged, but it has a quota, so watch your usage.
 
-On Alpine, `/scratch` files are purged after 90 days. Conda envs that were
-created in scratch (or in the default `~/.conda/envs` location) were being
-deleted, which broke pipelines. The fix was to rebuild every env in
-`/projects`, which is not purged, and to point conda at that location by default.
+## Before you start
 
-## Layout
+1. **An Alpine account** where you can log in and submit Slurm jobs.
+2. **Miniforge (conda) in your projects directory.** If you don't have conda yet:
 
-```
-/projects/c832500103@colostate.edu/
-├── miniforge3/        # conda install (base env)
-├── conda_envs/        # <-- ALL environments live here
-├── conda_pkgs/        # package cache (also kept off scratch)
-└── CondaEnvs/         # recipes, build scripts, logs (the backup)
-    ├── <name>.yml         # minimal spec (what I asked for)
-    ├── <name>.full.yml    # full export (exact versions, for rebuilding)
-    ├── make_envs.sh / build_envs.sbatch   # scripts used to rebuild everything
-    └── build_envs_<jobid>.log             # log from the rebuild job
-```
+   ~~~bash
+   cd /projects/$USER
+   curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh"
+   bash Miniforge3-Linux-x86_64.sh -b -p /projects/$USER/miniforge3
+   /projects/$USER/miniforge3/bin/conda init bash
+   ~~~
 
-## Current environments
+   Log out and back in. You should see `(base)` at your prompt.
+3. **Your Slurm partition and QOS.** The defaults in this repo are
+   `--partition=acpu --qos=cpu-normal`. If your account differs (or needs
+   `--account`), see "Partition, QOS, and account" below.
 
-All are in `/projects/c832500103@colostate.edu/conda_envs/`.
+## Quick start
 
-| Env | Main tools |
-|---|---|
-| `annot_env` | hmmer, seqkit, transdecoder, diamond (no Python by design) |
-| `deeptools_kernel_v2` | deeptools |
-| `fastp_env` | fastp |
-| `hisat2_env_fixed` | hisat2 |
-| `hisat2_env` | hisat2 (duplicate of `_fixed`, safe to remove) |
-| `homer_env` | HOMER |
-| `macs2_env` | macs2 |
-| `miniprot_env` | miniprot |
-| `pandas_env` | pandas, numpy |
-| `rnaPseudo_clean2` | pandas, pysam, scipy |
+~~bash
+cd /projects/$USER
+git clone https://github.com/yates13/Alpine_Conda_Envs.git
+cd Alpine_Conda_Envs
 
-## How the migration worked
+bash scripts/setup_conda.sh                       # one-time: envs + package cache go to /projects
+~~
 
-1. Exported each env's spec to YAML (`<name>.yml` and `<name>.full.yml`).
-2. Rebuilt each env into `/projects/.../conda_envs` using
-   `conda env create -p <path> -f <name>.yml`, run as a Slurm job
-   (`build_envs.sbatch`) so it didn't tie up the login node.
-3. Checked the build log for errors (`grep -iE "error|fail" build_envs_*.log`).
-4. Verified each env: structure check, `conda list`, `pip check`, and running
-   the main tool from each env.
-5. Removed the old scratch locations from `envs_dirs` and deleted the stale
-   scratch copies.
+The specs in `envs/` are **examples from a CUT&RUN / RNA-seq pipeline** (macs2,
+hisat2, HOMER, deeptools, and so on). Building all of them takes a while and uses
+quota, so try one first:
 
-## One-time conda configuration
+~~bash
+sbatch scripts/build_envs.sbatch fastp_env        # build just one env
+squeue -u $USER                                   # watch the job
+~~
 
-Already done, listed here in case it needs redoing (for example on a new account).
+When the job finishes, the last line of the log should be `Done. Environments are in ...`:
 
-```bash
-conda config --add envs_dirs /projects/c832500103@colostate.edu/conda_envs
-conda config --add pkgs_dirs /projects/c832500103@colostate.edu/conda_pkgs
-```
+~~bash
+tail logs/build_envs_<jobid>.log
+bash scripts/verify_envs.sh
+/projects/$USER/conda_envs/fastp_env/bin/fastp --version    # run the real tool
+~~
 
-Make sure `conda_envs` is listed **first** in `envs_dirs`:
+To build everything, run `sbatch scripts/build_envs.sbatch` with no arguments. To use your
+own envs instead, delete the example specs in `envs/` and add yours (see below).
+Always run `sbatch` from the repo root, because logs go to `logs/`.
 
-```bash
-conda config --show envs_dirs
-conda config --show pkgs_dirs
-conda config --show-sources     # shows which file each setting comes from (~/.condarc)
-```
+## Partition, QOS, and account
 
-`conda config --remove` only works on entries you added yourself. Built-in
-defaults (like `miniforge3/envs`) will error with "not present in config" and
-can be ignored.
+Override at submit time. No need to edit the file:
 
-## Making a new environment
+~~bash
+sbatch --partition=<partition> --qos=<qos> --account=<account> scripts/build_envs.sbatch
+~~
 
-Run this on a compute node (`sinteractive` or `sbatch`), not the login node,
-for anything beyond a tiny env.
+If your paths differ from `/projects/$USER/...`:
 
-### 1. Write a spec file (recommended)
+~~bash
+CONDA_BASE=/path/to/miniforge3 ENV_DIR=/path/to/conda_envs sbatch --export=ALL scripts/build_envs.sbatch
+~~
 
-Save it in `/projects/c832500103@colostate.edu/CondaEnvs/`:
-
-```yaml
-# myenv.yml
-name: myenv
-channels:
-  - conda-forge
-  - bioconda
-dependencies:
-  - python=3.11
-  - samtools
-  - bedtools
-```
-
-### 2. Build it into /projects
-
-```bash
-conda env create -p /projects/c832500103@colostate.edu/conda_envs/myenv \
-    -f /projects/c832500103@colostate.edu/CondaEnvs/myenv.yml
-```
-
-Always use `-p <full path>`. This guarantees it goes to `/projects` regardless
-of config.
-
-### Quick one-liner (no spec file)
-
-```bash
-conda create -p /projects/c832500103@colostate.edu/conda_envs/myenv \
-    -c conda-forge -c bioconda python=3.11 samtools
-```
-
-### 3. Back it up
-
-Export the exact installed versions right after it works:
-
-```bash
-conda env export -p /projects/c832500103@colostate.edu/conda_envs/myenv \
-    > /projects/c832500103@colostate.edu/CondaEnvs/myenv.full.yml
-```
-
-### 4. Verify it
-
-```bash
-E=/projects/c832500103@colostate.edu/conda_envs
-conda list -p $E/myenv | head          # packages installed?
-$E/myenv/bin/samtools --version         # run the actual tool
-$E/myenv/bin/python -m pip check        # only if the env has Python
-```
-
-An env that has no Python (like `annot_env`) won't have `bin/python`. That is
-normal. Test its tools instead.
-
-## Using environments
-
-Interactive:
-
-```bash
-conda activate /projects/c832500103@colostate.edu/conda_envs/macs2_env
-```
-
-In Slurm scripts, **always activate by full path** so a stray copy with the
-same name can never be picked up:
-
-```bash
-source /projects/c832500103@colostate.edu/miniforge3/etc/profile.d/conda.sh
-conda activate /projects/c832500103@colostate.edu/conda_envs/macs2_env
-```
-
-## Installing more packages into an existing env
-
-```bash
-conda install -p /projects/c832500103@colostate.edu/conda_envs/myenv -c conda-forge somepackage
-```
-
-Then re-export the `.full.yml` and update the `.yml` so the backup stays current.
-
-## Rebuilding an env that broke or disappeared
-
-```bash
-conda env remove -p /projects/c832500103@colostate.edu/conda_envs/myenv
-conda env create -p /projects/c832500103@colostate.edu/conda_envs/myenv \
-    -f /projects/c832500103@colostate.edu/CondaEnvs/myenv.yml
-```
-
-Use the `.full.yml` instead of `.yml` if you need the exact same versions.
-It may fail on a different platform or if old builds were removed from the
-channels, in which case fall back to the minimal `.yml`.
-
-## Housekeeping
-
-- Never create envs in `/scratch` or `~/.conda/envs`.
-- Keep the `.yml` and `.full.yml` files. They are the backup.
-- `/projects` has a quota. Check usage occasionally and remove unused envs
-  with `conda env remove -p <path>`.
-- Clean the package cache sometimes: `conda clean --all` (frees space, does
-  not affect existing envs).
-- Don't use `rm -rf` on an env without checking the path first.
-
-## Troubleshooting
-
-| Symptom | Likely cause / fix |
-|---|---|
-| `conda activate myenv` picks the wrong env | A same-named env exists in another `envs_dirs` path. Activate by full path. |
-| `command not found` after activating | Env missing that package, or activation failed. Run `conda list -p <path>`. |
-| `error while loading shared libraries` | Broken env. Rebuild it from its `.yml`. |
-| Env build killed or very slow | Don't build on the login node. Use `sinteractive` or `sbatch`. |
-| `hisat2 --version` prints `Compiler: ... error: ld returned 1` | Harmless. It's build-info text baked into the binary, not a runtime error. |
-| `No module named ...` in a job | Script didn't activate the env. Add the `source .../conda.sh` and `conda activate <full path>` lines. |
-
----
-
-## Using this repo (current layout)
-
-The repo was reorganized after the notes above were written. Specs now live in
-`envs/` (exact-version snapshots in `envs/locked/`) and scripts in `scripts/`.
-Where the notes above refer to `CondaEnvs/<name>.yml` or `make_envs.sh`, use
-`envs/<name>.yml` and `scripts/make_envs.sh`.
+## Repo layout
 
 ~~
 envs/             one spec per environment (edit these)
@@ -204,46 +79,88 @@ envs/             one spec per environment (edit these)
 scripts/          setup_conda.sh, make_envs.sh, new_env.sh,
                   export_env.sh, verify_envs.sh, build_envs.sbatch
 logs/             Slurm logs (not committed)
+docs/             notes on how this setup was migrated
 ~~
 
-### Quick start (for anyone cloning this)
+## Common tasks
 
-Prerequisite: conda or Miniforge installed at `/projects/$USER/miniforge3`.
-
-~~bash
-git clone https://github.com/yates13/Alpine_Conda_Envs.git
-cd Alpine_Conda_Envs
-
-bash scripts/setup_conda.sh            # one-time: envs + package cache go to /projects
-sbatch scripts/build_envs.sbatch       # build every spec in envs/ as a Slurm job
-bash scripts/verify_envs.sh            # when the job finishes
-~~
-
-Run `sbatch` from the repo root. Logs appear in `logs/`. The specs in `envs/`
-are examples from a CUT&RUN / RNA-seq pipeline; delete or replace them with your own.
-
-### Common tasks (run on a compute node, not the login node)
+Run these on a compute node (`sinteractive`), not the login node.
 
 ~~bash
 bash scripts/make_envs.sh fastp_env                          # build one env
 bash scripts/make_envs.sh                                    # build all (existing are skipped)
 bash scripts/make_envs.sh --locked                           # build from exact-version snapshots
 bash scripts/new_env.sh align_env python=3.11 samtools bwa   # write a spec and build it
-bash scripts/export_env.sh myenv                             # snapshot to envs/locked/myenv.full.yml
+bash scripts/export_env.sh align_env                         # snapshot to envs/locked/
 ~~
 
-Paths default to `/projects/$USER/...`. Override with `ENV_DIR` and `CONDA_BASE`
-if yours differ:
+Or write a spec by hand, then run `bash scripts/make_envs.sh myenv`:
+
+~~yaml
+# envs/myenv.yml
+name: myenv
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - samtools
+~~
+
+## Using an environment
+
+Interactive:
 
 ~~bash
-CONDA_BASE=/path/to/miniforge3 ENV_DIR=/path/to/conda_envs sbatch --export=ALL scripts/build_envs.sbatch
+conda activate /projects/$USER/conda_envs/myenv
 ~~
 
-### Partition and QOS
-
-`scripts/build_envs.sbatch` defaults to `--partition=acpu --qos=cpu-normal`.
-If your account uses different names, override them at submit time without editing the file:
+In Slurm scripts, activate by **full path** so a same-named env elsewhere can never be picked up:
 
 ~~bash
-sbatch --partition=<your-partition> --qos=<your-qos> scripts/build_envs.sbatch
+source /projects/$USER/miniforge3/etc/profile.d/conda.sh
+conda activate /projects/$USER/conda_envs/myenv
 ~~
+
+## Rebuilding a broken or missing env
+
+~~bash
+conda env remove -p /projects/$USER/conda_envs/myenv
+bash scripts/make_envs.sh myenv        # or: bash scripts/make_envs.sh --locked
+~~
+
+If an exact snapshot fails (old builds can disappear from channels), fall back to the plain spec.
+
+## Verifying an env isn't broken
+
+`bash scripts/verify_envs.sh` checks that each env has `conda-meta`, that `conda list`
+works, and that `pip check` is clean (for envs with Python). Then run each env's main
+program (for example `macs2 --version`). Some envs have no Python on purpose
+(CLI-only tool envs), so a missing `bin/python` is not an error.
+
+## Housekeeping
+
+- Never create envs in `/scratch` or `~/.conda/envs`. Always build into `/projects`.
+- Commit the specs: they are your backup.
+- Never commit logs, or a `.full.yml` with a `prefix:` line (it contains your username).
+  `export_env.sh` strips it. To clean existing files: `sed -i '/^prefix:/d' envs/locked/*.full.yml`
+- `conda clean --all` frees cache space and doesn't touch existing envs.
+- Check your `/projects` quota. Remove unused envs with `conda env remove -p <path>`.
+
+## Troubleshooting
+
+| Symptom | Likely cause / fix |
+|---|---|
+| `sbatch: error: invalid partition / qos / account` | Override at submit time: `sbatch --partition=... --qos=... --account=... scripts/build_envs.sbatch` |
+| `conda: command not found` | Run `conda init bash`, then log out and back in. In job scripts, add `source /projects/$USER/miniforge3/etc/profile.d/conda.sh`. |
+| Slurm error about `logs/` | Submit from the repo root. The `logs/` folder must exist. |
+| `conda activate name` picks the wrong env | A same-named env exists in another `envs_dirs` path. Activate by full path. |
+| `command not found` after activating | Package missing from the env. Check `conda list -p <path>`. |
+| `error while loading shared libraries` | Broken env. Rebuild it. |
+| Build is slow or killed | Don't build on the login node. Use `sbatch` or `sinteractive`. |
+| `No module named ...` in a job | The job script didn't activate the env. Add the `source` and `conda activate` lines. |
+| `hisat2 --version` prints `Compiler: ... ld returned 1` | Harmless build-info text in the binary, not a runtime error. |
+
+## Background
+
+How this setup was migrated from scratch to projects: [docs/MIGRATION_NOTES.md](docs/MIGRATION_NOTES.md).
