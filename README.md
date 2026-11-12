@@ -211,8 +211,8 @@ logs/             Slurm logs (not committed)
 Prerequisite: conda or Miniforge installed at `/projects/$USER/miniforge3`.
 
 ~~bash
-git clone https://github.com/yates13/alpine-conda-envs.git
-cd alpine-conda-envs
+git clone https://github.com/yates13/Alpine_Conda_Envs.git
+cd Alpine_Conda_Envs
 
 bash scripts/setup_conda.sh            # one-time: envs + package cache go to /projects
 sbatch scripts/build_envs.sbatch       # build every spec in envs/ as a Slurm job

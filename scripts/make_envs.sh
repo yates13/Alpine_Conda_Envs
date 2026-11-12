@@ -1,36 +1,50 @@
 #!/bin/bash
 ################################################################################
-# Rebuild the conda environments for this pipeline from the .yml files in this
-# folder. Environments that already exist are skipped.
+# Build conda environments from the YAML specs in envs/.
+# Envs that already exist are skipped; failures are reported at the end.
 #
-# Usage:
-#     bash CondaEnvs/make_envs.sh <ENV_DIR>
+# Usage (from anywhere):
+#   bash scripts/make_envs.sh                 # build every envs/*.yml
+#   bash scripts/make_envs.sh fastp_env       # build only the named env(s)
+#   bash scripts/make_envs.sh --locked        # build from envs/locked/*.full.yml
+#                                             # (exact versions) instead
 #
-# Files named *.full.yml are exact-version exports and are NOT built here. To
-# rebuild one exactly, run:
-#     conda env create --file CondaEnvs/<name>.full.yml --prefix <ENV_DIR>/<name>
+# Target directory: $ENV_DIR (default: /projects/$USER/conda_envs)
 ################################################################################
 set -uo pipefail
 
-ENV_DIR=${1:?usage: bash make_envs.sh <ENV_DIR>}
-HERE=$(cd "$(dirname "$0")" && pwd)
+REPO=$(cd "$(dirname "$0")/.." && pwd)
+ENV_DIR=${ENV_DIR:-/projects/$USER/conda_envs}
+
+SPEC_DIR="$REPO/envs"; SUFFIX=".yml"
+if [[ "${1:-}" == "--locked" ]]; then
+    SPEC_DIR="$REPO/envs/locked"; SUFFIX=".full.yml"; shift
+fi
 
 command -v conda >/dev/null 2>&1 || { echo "ERROR: conda not found on PATH" >&2; exit 1; }
 mkdir -p "$ENV_DIR"
 
-failed=()
-for yml in "$HERE"/*.yml; do
-    [[ -e "$yml" ]] || { echo "No .yml files found in $HERE" >&2; exit 1; }
-    name=$(basename "$yml" .yml)
-    [[ "$name" == *.full ]] && continue
+# Which envs to build: names given as arguments, otherwise everything in SPEC_DIR
+names=("$@")
+if (( ${#names[@]} == 0 )); then
+    for f in "$SPEC_DIR"/*"$SUFFIX"; do
+        [[ -e "$f" ]] || { echo "No *$SUFFIX files found in $SPEC_DIR" >&2; exit 1; }
+        names+=("$(basename "$f" "$SUFFIX")")
+    done
+fi
 
+failed=()
+for name in "${names[@]}"; do
+    spec="$SPEC_DIR/$name$SUFFIX"
+    if [[ ! -f "$spec" ]]; then
+        echo "MISSING SPEC: $spec" >&2; failed+=("$name"); continue
+    fi
     if [[ -f "$ENV_DIR/$name/conda-meta/history" ]]; then
         echo "EXISTS: $name - skipping"
         continue
     fi
-
     echo "Building: $name"
-    if ! conda env create --file "$yml" --prefix "$ENV_DIR/$name" -y; then
+    if ! conda env create --file "$spec" --prefix "$ENV_DIR/$name" -y; then
         failed+=("$name")
     fi
 done
@@ -39,4 +53,4 @@ if (( ${#failed[@]} )); then
     echo "FAILED: ${failed[*]}" >&2
     exit 1
 fi
-echo "All environments are in place in $ENV_DIR"
+echo "Done. Environments are in $ENV_DIR"

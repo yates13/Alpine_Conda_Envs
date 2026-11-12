@@ -4,13 +4,15 @@
 #SBATCH --qos=normal
 #SBATCH --ntasks=4
 #SBATCH --time=04:00:00
-#SBATCH --output=build_envs_%j.log
+#SBATCH --output=logs/build_envs_%j.log
 
-# Submit from this folder:   sbatch build_envs.sbatch
-# Override defaults if needed:
-#   CONDA_BASE=/path/to/miniforge3 ENV_DIR=/path/to/conda_envs sbatch --export=ALL build_envs.sbatch
+# Submit from the repo root:   sbatch scripts/build_envs.sbatch
+# Defaults assume /projects/$USER; override at submit time if yours differ:
+#   CONDA_BASE=/path/to/miniforge3 ENV_DIR=/path/to/conda_envs sbatch --export=ALL scripts/build_envs.sbatch
+# Extra arguments are passed to make_envs.sh (env names, or --locked):
+#   sbatch scripts/build_envs.sbatch fastp_env
 CONDA_BASE=${CONDA_BASE:-/projects/$USER/miniforge3}
-ENV_DIR=${ENV_DIR:-/projects/$USER/conda_envs}
+export ENV_DIR=${ENV_DIR:-/projects/$USER/conda_envs}
 
 source "$CONDA_BASE/etc/profile.d/conda.sh"
-bash "$SLURM_SUBMIT_DIR/make_envs.sh" "$ENV_DIR"
+bash "$SLURM_SUBMIT_DIR/scripts/make_envs.sh" "$@"
