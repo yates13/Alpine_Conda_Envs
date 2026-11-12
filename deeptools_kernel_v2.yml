@@ -1,0 +1,9 @@
+# Step 4 (bamCompare, computeMatrix, computeMatrixOperations, plotHeatmap, ...).
+# If you also use this as a Jupyter kernel (see How_to_make_deeptools_kernel_env.md),
+# add ipykernel below.
+name: deeptools_kernel_v2
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - deeptools

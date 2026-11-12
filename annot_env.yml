@@ -1,0 +1,10 @@
+name: annot_env
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - hmmer
+  - seqkit
+  - transdecoder
+  - diamond

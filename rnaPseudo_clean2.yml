@@ -1,0 +1,9 @@
+name: rnaPseudo_clean2
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - numpy[version='<2']
+  - htseq
+  - python=3.10

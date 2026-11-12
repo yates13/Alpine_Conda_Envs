@@ -1,0 +1,5 @@
+*.log
+slurm-*.out
+conda_envs/
+conda_pkgs/
+.DS_Store
