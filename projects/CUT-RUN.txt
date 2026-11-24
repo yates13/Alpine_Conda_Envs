@@ -1,0 +1,9 @@
+# Conda envs used by yates13/Culex-Tarsalis-CUT-RUN-and-RNA-Seq (CUT-RUN/)
+# env<TAB>pipeline steps
+fastp_env	1.1
+multiqc_env	1.2, 2.2.5
+hisat2_env_fixed	2.1-2.4, QC scripts
+macs2_env	3.1
+homer_env	3.0 (bedtools, supplementary)
+deeptools_kernel_v2	4
+diffbind_env	5
