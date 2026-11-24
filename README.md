@@ -227,3 +227,9 @@ program (for example `macs2 --version`). Some envs have no Python on purpose
 ## Background
 
 How this setup was migrated from scratch to projects: [docs/MIGRATION_NOTES.md](docs/MIGRATION_NOTES.md).
+
+## hisat2_env_fixed: redo the "@" fix after any rebuild
+
+The Alpine paths contain "@" (`/projects/c832500103@colostate.edu`), which Perl reads as an array (`@colostate`), so the HISAT2 Perl scripts fail.
+After building or rebuilding `hisat2_env_fixed`, escape it in `lib/perl5/5.32/core_perl/Config_heavy.pl` (`@colostate` -> `\@colostate`) and test with `perl -V`.
+`conda env export` does not capture this manual edit, so `envs/locked/hisat2_env_fixed.full.yml` alone will not give a working env.
